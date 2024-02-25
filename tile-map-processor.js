@@ -1,51 +1,128 @@
+/**
+ *
+ * Reldens - Tile Map Optimizer - TiledMapProcessor
+ *
+ */
+
 const fs = require('fs');
 const sharp = require('sharp');
 const path = require('path');
-const { sc } = require('@reldens/utils');
+let { OptionsValidator } = require('./lib/validator/options-validator');
+let { FileHandler } = require('./lib/files/file-handler');
+const { Logger, sc } = require('@reldens/utils');
 
 class TiledMapProcessor
 {
 
     version = 1
 
-    constructor()
+    constructor(props)
     {
-        this.newName = '';
-        this.mappedOldToNewTiles = [];
-        this.tileSetData = [];
-        this.uploadedImages = [];
-        this.newImagesPositions = [];
-        this.baseDir = '';
-        this.createDir = '';
-        this.tileWidth = 0;
-        this.tileHeight = 0;
+        this.currentDate = (new Date()).toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '-');
+        this.optionsValidator = new OptionsValidator();
+        this.fileHandler = new FileHandler();
+        this.isReady = false;
+        if(props && 0 < Object.keys(props).length){
+            this.setOptions(props);
+            this.isReady = this.validate();
+        }
     }
 
     setOptions(options)
     {
-        this.newName = sc.get(options, 'newName', '');
-        this.mappedOldToNewTiles = sc.get(options, 'mappedOldToNewTiles', []);
-        this.tileSetData = sc.get(options, 'tileSetData', []);
-        this.uploadedImages = sc.get(options, 'uploadedImages', []);
-        this.newImagesPositions = sc.get(options, 'newImagesPositions', []);
-        this.baseDir = sc.get(options, 'baseDir', '');
-        this.createDir = sc.get(options, 'createDir', '');
-        this.tileWidth = sc.get(options, 'tileWidth', 0);
-        this.tileHeight = sc.get(options, 'tileHeight', 0);
+        // required:
+        this.originalJSON = sc.get(options, 'originalJSON', false);
+        this.originalImages = sc.get(options, 'originalImages', false);
+        // optional:
+        this.newName = sc.get(
+            options,
+            'newName',
+            `optimized-map-v${this.version}-${this.originalMapFileName.toLowerCase()}-${this.currentDate}`
+        );
+        this.factor = sc.get(options, 'factor', 1);
+        this.transparentColor = sc.get(options, 'transparentColor', '#000000');
+        this.rootFolder = sc.get(options, 'rootFolder', __dirname);
+        this.generatedFolder = sc.get(
+            options,
+            'generatedFolder',
+            this.fileHandler.joinPaths(this.rootFolder, 'generated')
+        );
+        this.mapFileName = sc.get(
+            options,
+            'mapFileName',
+            this.fileHandler.joinPaths(this.generatedFolder, this.newName+'.json')
+        );
+        this.tileSheetFileName = sc.get(
+            options,
+            'tileSheetFileName',
+            this.fileHandler.joinPaths(this.generatedFolder, this.newName+'.png')
+        );
+        // dynamic generated:
+        this.originalMapFileName = '';
+        this.mappedOldToNewTiles = [];
+        this.tileSetData = [];
+        this.newImagesPositions = [];
+        this.tileWidth = 0;
+        this.tileHeight = 0;
+        this.totalRows = 0;
+        this.totalColumns = 0;
+        this.newMapImageWidth = 0;
+        this.newMapImageHeight = 0;
+        this.newMapImage = null; // the image resource
+    }
+
+    validate()
+    {
+        return this.optionsValidator.validate(this);
+    }
+
+    async generate()
+    {
+        this.isReady = this.validate();
+        if(!this.isReady){
+            return false;
+        }
+        await this.optimize();
+    }
+
+    async optimize()
+    {
+        this.tileWidth = this.originalJSON.tilewidth;
+        this.tileHeight = this.originalJSON.tileheight;
+        this.parseJSON();
+        this.newMapImage = sharp({
+            create: {
+                width: this.newMapImageWidth,
+                height: this.newMapImageHeight,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            }
+        });
+        await this.createThumbsFromLayersData();
+        this.createNewJSON();
+        if (1 < this.factor) {
+            await this.resizeTileset();
+        }
+        // save the new map image
+        await this.newMapImage.toFile(this.tileSheetFileName);
+        this.output = {
+            image: this.tileSheetFileName,
+            json: this.mapFileName
+        };
+        return this.output;
     }
 
     parseJSON(json)
     {
         json.layers.forEach(layer => {
             if (!layer.data) {
-                throw new Error('ERROR CODE - 2 - Invalid JSON.');
+                Logger.error('Invalid JSON.');
             }
             // clean up for duplicates
             const clean = [...new Set(layer.data)];
             // map new positions
             this.mappedOldToNewTiles = [...new Set([...this.mappedOldToNewTiles, ...clean])];
         });
-
         let spacing = 0;
         // get tilesets data
         json.tilesets.forEach(tileset => {
@@ -69,7 +146,7 @@ class TiledMapProcessor
                 last: tileset.firstgid + tileset.tilecount,
                 tiles_count: tileset.tilecount,
                 image: tilesetImageName,
-                tmp_image: this.getTempImageByName(tilesetImageName),
+                tmp_image: this.originalImages[tilesetImageName],
                 width: tileset.imagewidth,
                 height: tileset.imageheight,
                 animations: animations,
@@ -80,7 +157,6 @@ class TiledMapProcessor
                 spacing = tileset.spacing;
             }
         });
-
         // sort
         this.mappedOldToNewTiles.sort((a, b) => a - b);
         // remove zero
@@ -93,18 +169,9 @@ class TiledMapProcessor
         this.newMapImageHeight = this.totalRows * this.tileHeight;
     }
 
-    getTempImageByName(tilesetImageName)
-    {
-        const uploadedImage = this.uploadedImages.find(img => img.name === tilesetImageName);
-        if (!uploadedImage) {
-            throw new Error(`ERROR - The specified image in the tileset was not found: ${tilesetImageName}`);
-        }
-        return uploadedImage.tmp_name;
-    }
-
     async createSingleTileImage(baseImage, tileX, tileY, spacing)
     {
-        // Create a single tile image using sharp
+        // create a single tile image:
         try {
             const image = sharp(baseImage);
             const metadata = await image.metadata();
@@ -122,11 +189,11 @@ class TiledMapProcessor
         }
     }
 
-    async createThumbsFromLayersData() {
+    async createThumbsFromLayersData()
+    {
         let tilesRowCounter = 0;
         let tilesColCounter = 0;
-
-        // Create a new image to which we will copy all the tiles
+        // create a new image to which we will copy all the tiles
         const newMapImage = sharp({
             create: {
                 width: this.newMapImageWidth,
@@ -135,7 +202,6 @@ class TiledMapProcessor
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
             }
         });
-
         for (const [newTileIndex, mappedTileIndex] of this.mappedOldToNewTiles.entries()) {
             if (tilesRowCounter > 0 && tilesRowCounter === this.totalColumns) {
                 tilesRowCounter = 0;
@@ -152,39 +218,18 @@ class TiledMapProcessor
                 tilePosition.y,
                 tileSet.spacing
             );
-
-            // Calculate the destination X and Y positions for the new image
+            // calculate the destination X and Y positions for the new image:
             const destX = tilesRowCounter * (this.tileWidth + tileSet.spacing);
             const destY = tilesColCounter * (this.tileHeight + tileSet.spacing);
-
-            // Composite the single tile image onto the new map image at the calculated position
+            // composite the single tile image onto the new map image at the calculated position:
             newMapImage.composite([{
                 input: await singleTileImage.toBuffer(),
                 left: destX,
                 top: destY
             }]);
-
-            // Update the new images positions map
+            // update the new images positions map:
             this.newImagesPositions[mappedTileIndex] = newImagePosition;
         }
-
-        // Save the composited image to disk
-        const outputPath = path.join(this.createDir, `${this.newName}.png`);
-        await newMapImage.toFile(outputPath);
-
-        // Update the output message with links to the new image and JSON
-        this.output += '<div class="col-12 mb-3">' +
-            '<hr class="mb-6"/>' +
-            '<h2>Download your optimized JSON and image map file!</h2>' +
-            '</div>' +
-            '<div class="col-12 mb-3">' +
-            `<a href="${this.createUrl}${this.newName}.json">New JSON Map File</a>` +
-            '</div>' +
-            '<div class="col-12 mb-3">' +
-            `<a href="${this.createUrl}${this.newName}.png">` +
-            `<img src="${this.createUrl}${this.newName}.png"/>` +
-            '</a>' +
-            '</div>';
     }
 
     getTilePositionFromTilesetData(tileSet, mappedTileIndex)
@@ -193,7 +238,6 @@ class TiledMapProcessor
         const totalRows = Math.floor(tileSet.height / (this.tileHeight + tileSet.spacing));
         let tilesCounter = 0;
         let result = false;
-
         for (let r = 0; r < totalRows; r++) {
             for (let c = 0; c < totalColumns; c++) {
                 let mapIndex = tilesCounter + tileSet.first;
@@ -212,74 +256,100 @@ class TiledMapProcessor
         return result;
     }
 
-    getTileSetByTileIndex(mappedTileIndex) {
+    getTileSetByTileIndex(mappedTileIndex)
+    {
         for (const [tileSetName, tileSet] of Object.entries(this.tileSetData)) {
             if (mappedTileIndex >= tileSet.first && mappedTileIndex <= tileSet.last) {
                 return tileSet;
             }
         }
-        throw new Error(`ERROR - Mapped tile index not found: ${mappedTileIndex}`);
+        Logger.error('Mapped tile index not found: '+mappedTileIndex);
     }
 
-    createNewJSON(json)
+    createNewJSON()
     {
-        // Modify the json object directly
-        json.layers.forEach(layer => {
-            layer.data = layer.data.map(data => data !== 0 ? this.newImagesPositions[data] : data);
+        // update layer data to reference new tile positions:
+        this.originalJSON.layers.forEach(layer => {
+            if (Array.isArray(layer.data)) {
+                for (let i = 0; i < layer.data.length; i++) {
+                    if (layer.data[i] !== 0) {
+                        layer.data[i] = this.newImagesPositions[layer.data[i]];
+                    }
+                }
+            }
         });
-        // Handle animations and the rest of the json manipulation here
-
-        // Write the modified json to a file
-        const newJsonPath = path.join(this.createDir, `${this.newName}.json`);
-        fs.writeFileSync(newJsonPath, JSON.stringify(json, null, 2));
-        fs.chmodSync(newJsonPath, 0o775);
+        // update tileset information
+        const animations = [];
+        for (const tileset of this.tileSetData) {
+            for (const animation of tileset.animations) {
+                const animObj = {
+                    animation: [],
+                    id: this.newImagesPositions[tileset.first + animation.id] - 1
+                };
+                for (const frame of animation.animation) {
+                    const frameObj = {
+                        duration: frame.duration,
+                        tileid: this.newImagesPositions[tileset.first + frame.tileid] - 1
+                    };
+                    animObj.animation.push(frameObj);
+                }
+                animations.push(animObj);
+            }
+        }
+        // create a new tileset object
+        const newTileSet = {
+            columns: this.totalColumns,
+            firstgid: 1,
+            image: `${this.newName}.png`,
+            imageheight: this.newMapImageHeight,
+            imagewidth: this.newMapImageWidth,
+            margin: 0,
+            name: this.newName.toLowerCase(),
+            spacing: 0,
+            tilecount: this.totalRows * this.totalColumns,
+            tileheight: this.tileHeight,
+            tilewidth: this.tileWidth,
+            transparentcolor: this.transparentColor,
+            tiles: animations
+        };
+        // Replace the old tilesets with the new one
+        this.originalJSON.tilesets = [newTileSet];
+        // write the modified json to a file
+        this.fileHandler.writeFile(this.mapFileName, this.mapToJSON(this.originalJSON));
     }
 
-    async resizeTileset(factors = '2') {
-        const multipliers = factors.split(',').map(Number);
-        const originalTilesetImage = path.join(this.createDir, `${this.newName}.png`);
-        const originalTilesetJson = path.join(this.createDir, `${this.newName}.json`);
+    mapToJSON(map)
+    {
+        let jsonString = JSON.stringify(map, null, 4);
+        let dataPattern = /("data":\s*\[\n\s*)([\s\S]*?)(\n\s*\])/g;
 
-        for (const multiplier of multipliers) {
-            const resizedImageName = `${this.newName}-x${multiplier}.png`;
-            const resizedJsonName = `${this.newName}-x${multiplier}.json`;
-            const outputPath = path.join(this.createDir, resizedImageName);
+        return jsonString.replace(dataPattern, (match, start, dataArray, end) => {
+            let singleLineArray = dataArray.replace(/\s+/g, '');
+            return `${start.trim()}${singleLineArray}${end.trim()}`;
+        });
+    }
 
-            // Resize the image
-            const image = sharp(originalTilesetImage);
-            const metadata = await image.metadata();
-            const newWidth = metadata.width * multiplier;
-            const newHeight = metadata.height * multiplier;
-
-            await image
-                .resize(newWidth, newHeight)
-                .toFile(outputPath);
-
-            // Read and parse the original JSON
-            const json = JSON.parse(fs.readFileSync(originalTilesetJson, 'utf8'));
-
-            // Modify the JSON for the resized tileset
-            json.tilewidth *= multiplier;
-            json.tileheight *= multiplier;
-            json.tilesets[0].image = resizedImageName;
-            json.tilesets[0].imagewidth = newWidth;
-            json.tilesets[0].imageheight = newHeight;
-
-            // Save the modified JSON to a new file
-            const newJsonPath = path.join(this.createDir, resizedJsonName);
-            fs.writeFileSync(newJsonPath, JSON.stringify(json, null, 2));
-
-            // Update your output property or handle the result as needed
-            this.output += `<div class="col-12 mb-3">
-                        <hr class="mb-6"/>
-                        <a href="${this.createUrl}${resizedJsonName}">Download your JSON file! Resized x${multiplier}</a>
-                      </div>
-                      <a class="col-12 mb-3">
-                        <a href="${this.createUrl}${resizedImageName}" target="_blank">
-                          <img src="${this.createUrl}${resizedImageName}"/>
-                        </a>
-                      </div>`;
-        }
+    async resizeTileset()
+    {
+        const resizedImageName = `${this.newName}-x${this.factor}.png`;
+        const resizedJsonName = `${this.newName}-x${this.factor}.json`;
+        const outputPath = path.join(this.generatedFolder, resizedImageName);
+        // resize the image
+        const image = sharp(this.tileSheetFileName);
+        const metadata = await image.metadata();
+        const newWidth = metadata.width * this.factor;
+        const newHeight = metadata.height * this.factor;
+        await image.resize(newWidth, newHeight).toFile(outputPath);
+        // read and parse the original JSON:
+        const json = JSON.parse(fs.readFileSync(this.mapFileName, 'utf8'));
+        // modify the JSON for the resized tileset:
+        json.tilewidth *= this.factor;
+        json.tileheight *= this.factor;
+        json.tilesets[0].image = resizedImageName;
+        json.tilesets[0].imagewidth = newWidth;
+        json.tilesets[0].imageheight = newHeight;
+        // save the modified JSON to a new file:
+        this.fileHandler.writeFile(resizedJsonName, this.mapToJSON(json));
     }
 }
 
