@@ -91,26 +91,30 @@ class TiledMapOptimizer
         this.tileWidth = this.originalJSON.tilewidth;
         this.tileHeight = this.originalJSON.tileheight;
         this.parseJSON();
-        this.newMapImage = sharp({
-            create: {
-                width: this.newMapImageWidth,
-                height: this.newMapImageHeight,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
+        try {
+            this.newMapImage = sharp({
+                create: {
+                    width: this.newMapImageWidth,
+                    height: this.newMapImageHeight,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                }
+            });
+            await this.createThumbsFromLayersData();
+            this.createNewJSON();
+            if (1 < this.factor) {
+                await this.resizeTileset();
             }
-        });
-        await this.createThumbsFromLayersData();
-        this.createNewJSON();
-        if (1 < this.factor) {
-            await this.resizeTileset();
+            // save the new map image
+            await this.newMapImage.toFile(this.tileSheetFileName);
+            this.output = {
+                image: this.tileSheetFileName,
+                json: this.mapFileName
+            };
+            return this.output;
+        } catch (error) {
+            Logger.error('Error creating new map image.', error);
         }
-        // save the new map image
-        await this.newMapImage.toFile(this.tileSheetFileName);
-        this.output = {
-            image: this.tileSheetFileName,
-            json: this.mapFileName
-        };
-        return this.output;
     }
 
     parseJSON()
@@ -147,7 +151,7 @@ class TiledMapOptimizer
                 last: tileset.firstgid + tileset.tilecount,
                 tiles_count: tileset.tilecount,
                 image: tilesetImageName,
-                tmp_image: this.originalImages[tilesetImageName], // TODO - FIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                tmp_image: tilesetImageName, // TODO - FIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 width: tileset.imagewidth,
                 height: tileset.imageheight,
                 animations: animations,
@@ -194,42 +198,46 @@ class TiledMapOptimizer
     {
         let tilesRowCounter = 0;
         let tilesColCounter = 0;
-        // create a new image to which we will copy all the tiles
-        const newMapImage = sharp({
-            create: {
-                width: this.newMapImageWidth,
-                height: this.newMapImageHeight,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
+        try {
+            // create a new image to which we will copy all the tiles:
+            const newMapImage = sharp({
+                create: {
+                    width: this.newMapImageWidth,
+                    height: this.newMapImageHeight,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                }
+            });
+            for (const [newTileIndex, mappedTileIndex] of this.mappedOldToNewTiles.entries()) {
+                if (tilesRowCounter > 0 && tilesRowCounter === this.totalColumns) {
+                    tilesRowCounter = 0;
+                    tilesColCounter++;
+                } else {
+                    tilesRowCounter++;
+                }
+                const tileSet = this.getTileSetByTileIndex(mappedTileIndex);
+                const tilePosition = this.getTilePositionFromTilesetData(tileSet, mappedTileIndex);
+                const newImagePosition = ((this.totalColumns + 1) * tilesColCounter) + tilesRowCounter + 1;
+                const singleTileImage = await this.createSingleTileImage(
+                    tileSet.tmp_image,
+                    tilePosition.x,
+                    tilePosition.y,
+                    tileSet.spacing
+                );
+                // calculate the destination X and Y positions for the new image:
+                const destX = tilesRowCounter * (this.tileWidth + tileSet.spacing);
+                const destY = tilesColCounter * (this.tileHeight + tileSet.spacing);
+                // composite the single tile image onto the new map image at the calculated position:
+                newMapImage.composite([{
+                    input: await singleTileImage.toBuffer(),
+                    left: destX,
+                    top: destY
+                }]);
+                // update the new images positions map:
+                this.newImagesPositions[mappedTileIndex] = newImagePosition;
             }
-        });
-        for (const [newTileIndex, mappedTileIndex] of this.mappedOldToNewTiles.entries()) {
-            if (tilesRowCounter > 0 && tilesRowCounter === this.totalColumns) {
-                tilesRowCounter = 0;
-                tilesColCounter++;
-            } else {
-                tilesRowCounter++;
-            }
-            const tileSet = this.getTileSetByTileIndex(mappedTileIndex);
-            const tilePosition = this.getTilePositionFromTilesetData(tileSet, mappedTileIndex);
-            const newImagePosition = ((this.totalColumns + 1) * tilesColCounter) + tilesRowCounter + 1;
-            const singleTileImage = await this.createSingleTileImage(
-                tileSet.tmp_image,
-                tilePosition.x,
-                tilePosition.y,
-                tileSet.spacing
-            );
-            // calculate the destination X and Y positions for the new image:
-            const destX = tilesRowCounter * (this.tileWidth + tileSet.spacing);
-            const destY = tilesColCounter * (this.tileHeight + tileSet.spacing);
-            // composite the single tile image onto the new map image at the calculated position:
-            newMapImage.composite([{
-                input: await singleTileImage.toBuffer(),
-                left: destX,
-                top: destY
-            }]);
-            // update the new images positions map:
-            this.newImagesPositions[mappedTileIndex] = newImagePosition;
+        } catch (error) {
+            Logger.error('Error creating thumb for layers data.', error);
         }
     }
 
@@ -333,14 +341,15 @@ class TiledMapOptimizer
     async resizeTileset()
     {
         const resizedImageName = `${this.newName}-x${this.factor}.png`;
+        const imageOutputPath = path.join(this.generatedFolder, resizedImageName);
         const resizedJsonName = `${this.newName}-x${this.factor}.json`;
-        const outputPath = path.join(this.generatedFolder, resizedImageName);
-        // resize the image
-        const image = sharp(this.tileSheetFileName);
+        const jsonOutputPath = path.join(this.generatedFolder, resizedJsonName);
+        // resize the image:
+        const image = this.newMapImage;
         const metadata = await image.metadata();
         const newWidth = metadata.width * this.factor;
         const newHeight = metadata.height * this.factor;
-        await image.resize(newWidth, newHeight).toFile(outputPath);
+        await image.resize(newWidth, newHeight).toFile(imageOutputPath);
         // read and parse the original JSON:
         const json = JSON.parse(fs.readFileSync(this.mapFileName, 'utf8'));
         // modify the JSON for the resized tileset:
@@ -350,7 +359,7 @@ class TiledMapOptimizer
         json.tilesets[0].imagewidth = newWidth;
         json.tilesets[0].imageheight = newHeight;
         // save the modified JSON to a new file:
-        this.fileHandler.writeFile(resizedJsonName, this.mapToJSON(json));
+        this.fileHandler.writeFile(jsonOutputPath, this.mapToJSON(json));
     }
 }
 

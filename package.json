@@ -27,6 +27,6 @@
     },
     "dependencies": {
         "@reldens/utils": "^0.23.0",
-        "sharp": "^0.28.3"
+        "sharp": "^0.33.2"
     }
 }
