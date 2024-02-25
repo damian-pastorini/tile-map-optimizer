@@ -24,7 +24,7 @@ const options = {
 
 const tileMapOptimizer = new TiledMapOptimizer(options);
 
-await tileMapOptimizer.generate().catch((error) => {
+tileMapOptimizer.generate().catch((error) => {
     Logger.error(error);
 }).then(() => {
     Logger.info('Map saved! Check generated folder.');
