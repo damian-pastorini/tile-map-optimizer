@@ -1,8 +1,8 @@
 [![Reldens - GitHub - Release](https://www.dwdeveloper.com/media/reldens/reldens-mmorpg-platform.png)](https://github.com/damian-pastorini/reldens)
 
-# Reldens - Tile Map Generator
+# Reldens - Tile Map Optimizer
 
-A tool to generate random maps with pre-defined contents.
+A tool to optimize a tile map JSON, merge multiple tilesheets into a single image only with the used tiles.
 
 Need some specific feature?
 
@@ -12,12 +12,10 @@ Need some specific feature?
 
 ## Documentation
 
-[https://www.reldens.com/documentation/tile-map-generator/](https://www.reldens.com/documentation/tile-map-generator/)
-
+[https://www.reldens.com/documentation/tile-map-optimizer/](https://www.reldens.com/documentation/tile-map-optimizer/)
 
 ---
 
 ### [Reldens](https://github.com/damian-pastorini/reldens/ "Reldens")
 
 ##### [By DwDeveloper](https://www.dwdeveloper.com/ "DwDeveloper")
-
