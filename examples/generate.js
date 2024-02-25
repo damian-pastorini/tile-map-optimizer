@@ -10,6 +10,7 @@ const originalJSON = require('./reldens-town.json');
 
 const options = {
     originalJSON,
+    originalMapFileName: 'reldens-town',
     originalImages: {
         doors: 'doors.png',
         house: 'house.png',

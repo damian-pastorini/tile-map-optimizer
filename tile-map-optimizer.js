@@ -34,10 +34,12 @@ class TiledMapOptimizer
         this.originalJSON = sc.get(options, 'originalJSON', false);
         this.originalImages = sc.get(options, 'originalImages', false);
         // optional:
+        this.originalMapFileName = sc.get(options, 'originalMapFileName', '').toLowerCase();
+        this.appendOriginalName = this.originalMapFileName ? '-'+this.originalMapFileName : '';
         this.newName = sc.get(
             options,
             'newName',
-            `optimized-map-v${this.version}-${this.originalMapFileName.toLowerCase()}-${this.currentDate}`
+            `optimized-map-v${this.version}${this.appendOriginalName}-${this.currentDate}`
         );
         this.factor = sc.get(options, 'factor', 1);
         this.transparentColor = sc.get(options, 'transparentColor', '#000000');
@@ -58,7 +60,6 @@ class TiledMapOptimizer
             this.fileHandler.joinPaths(this.generatedFolder, this.newName+'.png')
         );
         // dynamic generated:
-        this.originalMapFileName = '';
         this.mappedOldToNewTiles = [];
         this.tileSetData = [];
         this.newImagesPositions = [];
@@ -112,9 +113,9 @@ class TiledMapOptimizer
         return this.output;
     }
 
-    parseJSON(json)
+    parseJSON()
     {
-        json.layers.forEach(layer => {
+        this.originalJSON.layers.forEach(layer => {
             if (!layer.data) {
                 Logger.error('Invalid JSON.');
             }
@@ -125,7 +126,7 @@ class TiledMapOptimizer
         });
         let spacing = 0;
         // get tilesets data
-        json.tilesets.forEach(tileset => {
+        this.originalJSON.tilesets.forEach(tileset => {
             let animations = [];
             let animationTiles = [];
             if (tileset.tiles) {
@@ -146,7 +147,7 @@ class TiledMapOptimizer
                 last: tileset.firstgid + tileset.tilecount,
                 tiles_count: tileset.tilecount,
                 image: tilesetImageName,
-                tmp_image: this.originalImages[tilesetImageName],
+                tmp_image: this.originalImages[tilesetImageName], // TODO - FIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 width: tileset.imagewidth,
                 height: tileset.imageheight,
                 animations: animations,
@@ -185,7 +186,7 @@ class TiledMapOptimizer
             };
             return image.extract(tileData);
         } catch (error) {
-            throw new Error('ERROR - Tile image could not be created.');
+            Logger.error('Tile image could not be created.', error);
         }
     }
 
