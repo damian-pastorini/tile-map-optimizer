@@ -1,0 +1,32 @@
+{
+    "name": "@reldens/tile-map-optimizer",
+    "scope": "@reldens",
+    "version": "0.1.0",
+    "description": "Reldens - Tile Map Optimizer",
+    "author": "Damian A. Pastorini",
+    "license": "MIT",
+    "homepage": "https://github.com/damian-pastorini/tile-map-optimizer",
+    "source": true,
+    "main": "index.js",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/damian-pastorini/tile-map-optimizer.git"
+    },
+    "keywords": [
+        "reldens",
+        "tile",
+        "map",
+        "optimize",
+        "random",
+        "game",
+        "nodejs",
+        "javascript"
+    ],
+    "bugs": {
+        "url": "https://github.com/damian-pastorini/tile-map-generator/issues"
+    },
+    "dependencies": {
+        "@reldens/utils": "^0.23.0",
+        "sharp": "^0.28.3"
+    }
+}
