@@ -32,7 +32,6 @@ class TiledMapOptimizer
     {
         // required:
         this.originalJSON = sc.get(options, 'originalJSON', false);
-        this.originalImages = sc.get(options, 'originalImages', false);
         // optional:
         this.originalMapFileName = sc.get(options, 'originalMapFileName', '').toLowerCase();
         this.appendOriginalName = this.originalMapFileName ? '-'+this.originalMapFileName : '';
@@ -102,11 +101,10 @@ class TiledMapOptimizer
             });
             await this.createThumbsFromLayersData();
             this.createNewJSON();
+            await this.newMapImage.png().toFile(this.tileSheetFileName);
             if (1 < this.factor) {
                 await this.resizeTileset();
             }
-            // save the new map image
-            await this.newMapImage.toFile(this.tileSheetFileName);
             this.output = {
                 image: this.tileSheetFileName,
                 json: this.mapFileName
@@ -151,7 +149,7 @@ class TiledMapOptimizer
                 last: tileset.firstgid + tileset.tilecount,
                 tiles_count: tileset.tilecount,
                 image: tilesetImageName,
-                tmp_image: tilesetImageName, // TODO - FIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                tmp_image: tilesetImageName,
                 width: tileset.imagewidth,
                 height: tileset.imageheight,
                 animations: animations,
@@ -200,14 +198,15 @@ class TiledMapOptimizer
         let tilesColCounter = 0;
         try {
             // create a new image to which we will copy all the tiles:
-            const newMapImage = sharp({
+            this.newMapImage = sharp({
                 create: {
                     width: this.newMapImageWidth,
                     height: this.newMapImageHeight,
                     channels: 4,
                     background: { r: 0, g: 0, b: 0, alpha: 0 }
                 }
-            });
+            }).png();
+            this.composites = [];
             for (const [newTileIndex, mappedTileIndex] of this.mappedOldToNewTiles.entries()) {
                 if (tilesRowCounter > 0 && tilesRowCounter === this.totalColumns) {
                     tilesRowCounter = 0;
@@ -228,14 +227,15 @@ class TiledMapOptimizer
                 const destX = tilesRowCounter * (this.tileWidth + tileSet.spacing);
                 const destY = tilesColCounter * (this.tileHeight + tileSet.spacing);
                 // composite the single tile image onto the new map image at the calculated position:
-                newMapImage.composite([{
-                    input: await singleTileImage.toBuffer(),
+                this.composites.push({
+                    input: await singleTileImage.png().toBuffer(),
                     left: destX,
                     top: destY
-                }]);
+                });
                 // update the new images positions map:
                 this.newImagesPositions[mappedTileIndex] = newImagePosition;
             }
+            this.newMapImage.composite(this.composites);
         } catch (error) {
             Logger.error('Error creating thumb for layers data.', error);
         }
@@ -349,7 +349,12 @@ class TiledMapOptimizer
         const metadata = await image.metadata();
         const newWidth = metadata.width * this.factor;
         const newHeight = metadata.height * this.factor;
-        await image.resize(newWidth, newHeight).toFile(imageOutputPath);
+        await sharp(this.tileSheetFileName).resize({
+            width: newWidth,
+            height: newHeight,
+            kernel: sharp.kernel.nearest,
+            fit: sharp.fit.fill,
+        }).toFile(imageOutputPath);
         // read and parse the original JSON:
         const json = JSON.parse(fs.readFileSync(this.mapFileName, 'utf8'));
         // modify the JSON for the resized tileset:
@@ -358,6 +363,8 @@ class TiledMapOptimizer
         json.tilesets[0].image = resizedImageName;
         json.tilesets[0].imagewidth = newWidth;
         json.tilesets[0].imageheight = newHeight;
+        json.tilesets[0].tilewidth *= this.factor;
+        json.tilesets[0].tileheight *= this.factor;
         // save the modified JSON to a new file:
         this.fileHandler.writeFile(jsonOutputPath, this.mapToJSON(json));
     }
