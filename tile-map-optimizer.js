@@ -82,7 +82,7 @@ class TiledMapOptimizer
         if(!this.isReady){
             return false;
         }
-        await this.optimize();
+        return await this.optimize();
     }
 
     async optimize()
@@ -112,6 +112,7 @@ class TiledMapOptimizer
             return this.output;
         } catch (error) {
             Logger.error('Error creating new map image.', error);
+            return null;
         }
     }
 

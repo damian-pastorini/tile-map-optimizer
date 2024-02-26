@@ -11,13 +11,6 @@ const originalJSON = require('./reldens-town.json');
 const options = {
     originalJSON,
     originalMapFileName: 'reldens-town',
-    originalImages: {
-        doors: 'doors.png',
-        house: 'house.png',
-        outside: 'outside.png',
-        terrain: 'terrain.png',
-        water: 'water.png'
-    },
     factor: 2,
     transparentColor: '#000000',
     rootFolder: __dirname
