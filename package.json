@@ -23,7 +23,7 @@
         "javascript"
     ],
     "bugs": {
-        "url": "https://github.com/damian-pastorini/tile-map-generator/issues"
+        "url": "https://github.com/damian-pastorini/tile-map-optimizer/issues"
     },
     "dependencies": {
         "@reldens/utils": "^0.23.0",
