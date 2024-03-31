@@ -4,7 +4,7 @@
  *
  */
 
-const { TiledMapOptimizer } = require('../tile-map-optimizer');
+const { TileMapOptimizer } = require('../lib/tile-map-optimizer');
 const { Logger } = require('@reldens/utils');
 const originalJSON = require('./reldens-town.json');
 
@@ -16,7 +16,7 @@ const options = {
     rootFolder: __dirname
 };
 
-const tileMapOptimizer = new TiledMapOptimizer(options);
+const tileMapOptimizer = new TileMapOptimizer(options);
 
 tileMapOptimizer.generate().catch((error) => {
     Logger.error(error);
