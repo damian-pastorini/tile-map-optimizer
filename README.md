@@ -14,6 +14,38 @@ Need some specific feature?
 
 [https://www.reldens.com/documentation/tile-map-optimizer/](https://www.reldens.com/documentation/tile-map-optimizer/)
 
+### Simple to use example:
+
+Create a file to configure the optimizer with the file to be optimized: 
+
+```
+const { TileMapOptimizer } = require('@reldens/tile-map-optimizer');
+const originalJSON = require('./reldens-town.json');
+
+const options = {
+    originalJSON,
+    originalMapFileName: 'reldens-town',
+    factor: 2,
+    transparentColor: '#000000',
+    rootFolder: __dirname
+};
+
+const tileMapOptimizer = new TileMapOptimizer(options);
+
+tileMapOptimizer.generate().catch((error) => {
+    console.log(error);
+}).then(() => {
+    console.log('Map saved! Check generated folder.');
+});
+```
+
+Run it:
+```
+$ node ./optimize-example.js
+```
+
+Look for your optimized maps on the "generated" folder.
+
 ---
 
 ### [Reldens](https://github.com/damian-pastorini/reldens/ "Reldens")
