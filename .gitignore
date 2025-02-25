@@ -22,4 +22,5 @@ node_modules/
 .idea
 examples/generated/*.png
 examples/generated/*.json
+examples/generated/*.tmx
 test/
