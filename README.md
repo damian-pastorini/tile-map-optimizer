@@ -2,7 +2,7 @@
 
 # Reldens - Tile Map Optimizer
 
-A tool to optimize a tile map JSON, merge multiple tilesheets into a single image only with the used tiles.
+A tool to optimize a tile map JSON, merge multiple tile-sheets into a single image only with the used tiles.
 
 Need some specific feature?
 
