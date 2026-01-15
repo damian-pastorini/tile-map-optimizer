@@ -1,7 +1,7 @@
 {
     "name": "@reldens/tile-map-optimizer",
     "scope": "@reldens",
-    "version": "0.36.0",
+    "version": "0.37.0",
     "description": "Reldens - Tile Map Optimizer",
     "author": "Damian A. Pastorini",
     "license": "MIT",
@@ -28,7 +28,7 @@
     },
     "dependencies": {
         "@reldens/utils": "^0.54.0",
-        "@reldens/server-utils": "^0.43.0",
+        "@reldens/server-utils": "^0.44.0",
         "sharp": "0.34.5"
     }
 }
