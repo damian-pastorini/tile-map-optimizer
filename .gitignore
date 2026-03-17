@@ -1,3 +1,4 @@
+.mcp.json
 # Logs
 logs
 *.log
@@ -19,7 +20,11 @@ node_modules/
 .npm
 
 # Project
-.claude
+/.claude/settings.json
+/.claude/settings.local.json
+/.claude/instructions.md
+/CLAUDE.local.md
+/.claude/skills/
 .idea
 examples/generated/*.png
 examples/generated/*.json
