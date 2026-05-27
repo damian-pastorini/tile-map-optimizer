@@ -23,6 +23,7 @@ node_modules/
 /.claude/settings.json
 /.claude/settings.local.json
 /.claude/instructions.md
+/.claude/hook-approvals.json
 /CLAUDE.local.md
 /.claude/skills/
 .idea
