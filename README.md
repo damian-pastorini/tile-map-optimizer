@@ -37,9 +37,10 @@ Create a file to configure the optimizer with the map to be optimized:
 
 ```javascript
 const { TileMapOptimizer } = require('@reldens/tile-map-optimizer');
+const { Logger } = require('@reldens/utils');
 const originalJSON = require('./reldens-town.json');
 
-const options = {
+let options = {
     originalJSON,
     originalMapFileName: 'reldens-town',
     factor: 2,
@@ -47,12 +48,12 @@ const options = {
     rootFolder: __dirname
 };
 
-const tileMapOptimizer = new TileMapOptimizer(options);
+let tileMapOptimizer = new TileMapOptimizer(options);
 
 tileMapOptimizer.generate().catch((error) => {
-    console.log(error);
+    Logger.error(error);
 }).then(() => {
-    console.log('Map saved! Check generated folder.');
+    Logger.info('Map saved! Check generated folder.');
 });
 ```
 
@@ -89,6 +90,14 @@ Look for your optimized maps in the "generated" folder.
 5. **Preserve Features**: Maintains animations, properties, and wangset data
 6. **Generate Output**: Saves optimized map JSON and tileset PNG
 7. **Optional Resize**: Scales output by factor if specified (e.g., 2x, 3x)
+
+### What counts as "actually used"
+
+Step 1 only collects tile ids found in a top level layer `data` array, plus the frames referenced by tile animations. A tile that appears **only** in the tileset `tiles` annotations, or **only** as a wangtile inside a wangset, is not used and is dropped, and every reference to it goes with it: `createNewJSON()` resolves each annotation and each `wangset.tile` through `fetchNewImagePositionForTile()`, which returns false for a dropped tile.
+
+This is why a composite that annotates or terrain maps a tile it never draws must park that tile somewhere in a layer. The Reldens composites do this with a dedicated `tileset-ref` layer, and `tile-map-generator` excludes that layer from its elements because layer names with fewer than three dash separated parts are skipped in `ElementsProvider.splitByLayerName()`.
+
+The practical consequence when authoring composites: adding or removing a parked tile repacks the sheet, so every optimized gid after it shifts. Committed expected maps and the tileset image next to them must be regenerated together, or the map will render against a mismatched sheet.
 
 ## Output Files
 
